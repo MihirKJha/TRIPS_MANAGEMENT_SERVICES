@@ -1,0 +1,79 @@
+version: '2'
+
+volumes:
+  kafka_data:
+
+networks:
+  kafka-net:
+    driver: bridge
+    
+services:
+  distro:
+    image: alpine
+    container_name: Alpine_Distro
+    restart: always
+    entrypoint: tail -f /dev/null   
+    
+  zookeeper:
+    image: wurstmeister/zookeeper
+    networks:
+      - kafka-net
+    ports:
+      - "2181:2181"
+    restart: always   
+    environment:
+      - ALLOW_ANONYMOUS_LOGIN=yes    
+  kafka:
+    image: wurstmeister/kafka
+    networks:
+      - kafka-net
+    ports:
+      - '9092:9092'
+    restart: always  
+    environment:
+      KAFKA_ADVERTISED_HOST_NAME: 192.168.178.48
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://192.168.178.48:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+    depends_on:
+      - zookeeper  
+    volumes:
+      - kafka_data:/var/run/docker.sock 
+      
+      
+  order-service:
+    container_name: order-service
+    build:
+      context: ./ms_order_service
+      dockerfile: ./Dockerfile
+    image: ms_order_service:latest
+    restart: always
+    extra_hosts:
+     - kafka:192.168.178.48
+    expose:
+      - 8082
+    ports:
+      - "8082:8082"
+    volumes:
+      - /var/log:/log  
+    links:
+     - distro  
+    environment:
+      - PERIOD=300
+      - PERIOD_TYPE=SECONDS  
+
+  Kafdrop:
+    image: obsidiandynamics/kafdrop
+    ports:
+      - '9000:9000'
+    restart: "no"  
+    extra_hosts:
+     - kafka:192.168.178.48
+    environment:
+      - KAFKA_BROKERCONNECT= 192.168.178.48:9092
+      - JVM_OPTS=  -Xms32M -Xmx64M
+    depends_on:
+      - kafka  
